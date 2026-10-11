@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: loki-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 500M
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loki
+
+  template:
+    metadata:
+      labels:
+        app: loki
+
+    spec:
+      containers:
+        - name: loki
+          image: grafana/loki:3.3.2
+          ports:
+            - name: loki
+              containerPort: 3100
+          args:
+            - -config.file=/etc/loki/loki-config.yaml
+          volumeMounts:
+            - mountPath: /etc/loki/loki-config.yaml
+              name: config
+              subPath: loki-config.yaml
+              readOnly: true
+            - name: data
+              mountPath: /loki
+      volumes:
+        - name: config
+          configMap:
+            name: loki-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: loki-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+spec:
+  selector:
+    app: loki
+  ports:
+    - name: loki
+      targetPort: 3100
+      port: 3100
