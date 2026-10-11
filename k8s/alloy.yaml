@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alloy
+
+  template:
+    metadata:
+      labels:
+        app: alloy
+
+    spec:
+      containers:
+        - name: alloy
+          image: grafana/alloy:latest
+          ports:
+            - name: grpc
+              containerPort: 4317
+            - name: http
+              containerPort: 4318
+            - name: alloy
+              containerPort: 12345
+          args:
+            - run
+            - --server.http.listen-addr=0.0.0.0:12345
+            - /etc/alloy/config.alloy
+          volumeMounts:
+            - mountPath: /etc/alloy/config.alloy
+              name: config
+              subPath: config.alloy
+              readOnly: true
+
+      volumes:
+        - name: config
+          configMap:
+            name: alloy-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy
+spec:
+  selector:
+    app: alloy
+  ports:
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: alloy
+      targetPort: 12345
+      port: 12345
