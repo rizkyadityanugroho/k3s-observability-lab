@@ -4,3 +4,4 @@ terraform.tfvars
 .terraform/
 .terraform.lock.hcl
 k3s.yaml
+node_modules/

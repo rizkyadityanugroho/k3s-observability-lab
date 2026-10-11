@@ -1,0 +1,17 @@
+{
+  "name": "sre-arc-app",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.79.0",
+    "@opentelemetry/exporter-metrics-otlp-grpc": "^0.221.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.221.0",
+    "@opentelemetry/instrumentation-pino": "^0.68.0",
+    "@opentelemetry/sdk-metrics": "^2.10.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
+    "express": "^4.21.0",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0"
+  }
+}
