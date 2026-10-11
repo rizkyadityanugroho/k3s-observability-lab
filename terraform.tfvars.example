@@ -1,0 +1,7 @@
+vpc_cidr      = "192.168.10.0/24"
+ec2_type      = "t4g.small"
+key_pair_name = "terra-k8s-key"
+vpc_az_count  = 1
+vpc_host_bits = 2
+vpc_name      = "terra-k8s-vpc"
+k3s_token     = "aweweng"
