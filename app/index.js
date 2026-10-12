@@ -56,5 +56,5 @@ app.get('/error', (req, res) => {
   res.status(500).send('Intentional error');
 });
 
-app.listen(process.env.PORT, () => pino.logger.info('Listening on 3000'));
+app.listen(process.env.PORT, () => pino.logger.info(`Listening on ${process.env.PORT}`));
 

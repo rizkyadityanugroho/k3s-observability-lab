@@ -1,7 +1,6 @@
 'use strict';
 
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { PinoInstrumentation } = require('@opentelemetry/instrumentation-pino');
 const {
   getNodeAutoInstrumentations,
 } = require('@opentelemetry/auto-instrumentations-node');
@@ -10,7 +9,7 @@ const {
 } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const {
   OTLPLogExporter
-} = require("@opentelemetry/exporter-logs-otlp-proto");
+} = require("@opentelemetry/exporter-logs-otlp-grpc");
 const {
   BatchLogRecordProcessor
 } = require("@opentelemetry/sdk-logs");
@@ -36,6 +35,12 @@ const metricReader = new PeriodicExportingMetricReader({
   exportIntervalMillis: 5000
 })
 
+const logReader = new BatchLogRecordProcessor ({
+  exporter: new OTLPLogExporter({
+    url: process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || otlpEndpoint,
+  })
+})
+
 const sdk = new NodeSDK({
   resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'node-app',
@@ -46,10 +51,10 @@ const sdk = new NodeSDK({
       process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || otlpEndpoint,
   }),
   metricReader,
-  logRecordProcessors: [ new BatchLogRecordProcessor(new OTLPLogExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || otlpEndpoint
-  }))], 
-  instrumentations: [new PinoInstrumentation(), getNodeAutoInstrumentations()],
+  logRecordProcessors: [
+    logReader
+  ],
+  instrumentations: [getNodeAutoInstrumentations()],
 });
 
 sdk.start();
