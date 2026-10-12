@@ -22,7 +22,7 @@ data:
 
       output {
         metrics = [otelcol.exporter.prometheus.default.input]
-        traces  = [otelcol.exporter.otlp.jaeger.input]
+        traces  = [otelcol.exporter.otlp.tempo.input]
         logs = [otelcol.exporter.loki.default.input]
       }
     }
@@ -31,9 +31,9 @@ data:
       forward_to = [loki.write.local.receiver]
     }
 
-    otelcol.exporter.otlp "jaeger" {
+    otelcol.exporter.otlp "tempo" {
       client {
-        endpoint = "jaeger:4317"
+        endpoint = "tempo:4317"
 
         tls {
           insecure = true
@@ -47,7 +47,7 @@ data:
 
     prometheus.remote_write "local" {
       endpoint {
-        url = "http://prometheus:9090/api/v1/write"
+        url = "http://prom:9090/api/v1/write"
       }
     }
 
