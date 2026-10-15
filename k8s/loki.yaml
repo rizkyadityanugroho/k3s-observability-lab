@@ -26,7 +26,8 @@ spec:
     spec:
       containers:
         - name: loki
-          image: grafana/loki:3.3.2
+          image: grafana/loki:3.7.8
+          imagePullPolicy: IfNotPresent
           ports:
             - name: loki
               containerPort: 3100
@@ -39,6 +40,10 @@ spec:
               readOnly: true
             - name: data
               mountPath: /loki
+      tolerations:
+        - key: "obs"
+          operator: "Exists"
+          effect: "NoSchedule"
       volumes:
         - name: config
           configMap:

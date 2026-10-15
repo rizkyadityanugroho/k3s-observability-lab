@@ -24,7 +24,8 @@ spec:
     spec:
       containers:
         - name: grafana
-          image: grafana/grafana:latest
+          image: grafana/grafana:13.0.11-slim
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 3000
@@ -34,6 +35,10 @@ spec:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
               readOnly: true
+      tolerations:
+        - key: "obs"
+          operator: "Exists"
+          effect: "NoSchedule"
       volumes:
         - name: data
           persistentVolumeClaim:

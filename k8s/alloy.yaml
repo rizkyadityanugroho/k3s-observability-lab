@@ -16,7 +16,8 @@ spec:
     spec:
       containers:
         - name: alloy
-          image: grafana/alloy:latest
+          image: grafana/alloy:v1.20.1
+          imagePullPolicy: IfNotPresent
           ports:
             - name: grpc
               containerPort: 4317
@@ -33,6 +34,10 @@ spec:
               name: config
               subPath: config.alloy
               readOnly: true
+      tolerations:
+        - key: "obs"
+          operator: "Exists"
+          effect: "NoSchedule"
 
       volumes:
         - name: config

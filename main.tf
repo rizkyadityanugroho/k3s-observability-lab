@@ -26,3 +26,6 @@ module "vpc" {
   host_bits = var.vpc_host_bits
 }
 
+resource "aws_ecr_repository" "node-api" {
+  name = "node-api"
+}

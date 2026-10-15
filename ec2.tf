@@ -36,7 +36,8 @@ module "ec2_obs" {
   sh -s - server \
   --tls-san "$PUBLIC_HOSTNAME" \
   --tls-san "$PUBLIC_IPV4" \
-  --tls-san "$PRIVATE_IPV4" 
+  --tls-san "$PRIVATE_IPV4" \
+  --node-taint obs=:NoSchedule 
   EOF
 }
 
@@ -58,7 +59,8 @@ module "ec2_workers" {
   curl -sfL https://get.k3s.io \
   | INSTALL_K3S_VERSION=$(curl -s https://api.github.com/repos/k3s-io/k3s/releases/latest | jq -r '.tag_name') \
   K3S_URL=https://${module.ec2_obs.private_ip[0]}:6443 \
-  K3S_TOKEN=${random_password.k3s_token.result} sh - 
+  K3S_TOKEN=${random_password.k3s_token.result} \
+  INSTALL_K3S_EXEC="agent --node-taint worker=:NoSchedule" sh -
   EOF
 }
 
@@ -79,7 +81,8 @@ module "ec2_db" {
   curl -sfL https://get.k3s.io \
   | INSTALL_K3S_VERSION=$(curl -s https://api.github.com/repos/k3s-io/k3s/releases/latest | jq -r '.tag_name') \
   K3S_URL=https://${module.ec2_obs.private_ip[0]}:6443 \
-  K3S_TOKEN=${random_password.k3s_token.result} sh - 
+  K3S_TOKEN=${random_password.k3s_token.result} \
+  INSTALL_K3S_EXEC="agent --node-taint db=:NoSchedule" sh -
   EOF
 }
 
