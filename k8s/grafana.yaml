@@ -35,6 +35,10 @@ spec:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
               readOnly: true
+            - name: v2-dashboards
+              mountPath: /var/lib/grafana/v2-dashboards
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
       nodeSelector:
         role: obs
       volumes:
@@ -44,6 +48,12 @@ spec:
         - name: datasources
           configMap:
             name: grafana-datasources
+        - name: v2-dashboards
+          configMap:
+            name: grafana-v2-dashboards
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
 ---
 apiVersion: v1
 kind: Service

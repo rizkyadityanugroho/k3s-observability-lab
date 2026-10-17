@@ -12,14 +12,29 @@ data:
         access: proxy
         url: http://prom:9090
         isDefault: true
+        
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://tempo:3200
+        uid: tempo
+        jsonData:
+          tracesToLogsV2:
+            datasourceUid: loki
+            spanStartTimeShift: '-15m'
+            spanEndTimeShift: '15m'
+            filterByTraceID: true
 
       - name: Loki
         type: loki
         access: proxy
         url: http://loki:3100
-
-      - name: Tempo
-        type: tempo
-        access: proxy
-        url: http://tempo:3200
+        uid: loki
+        jsonData:
+          derivedFields:
+            - datasourceUid: tempo
+              name: TraceID
+              matcherRegex: '"traceid":\s*"(\w+)"'
+              url: '$${__value.raw}'
+              urlDisplaylabel: 'View Trace'
 
