@@ -34,11 +34,8 @@ spec:
               name: config
               subPath: config.alloy
               readOnly: true
-      tolerations:
-        - key: "obs"
-          operator: "Exists"
-          effect: "NoSchedule"
-
+      nodeSelector:
+        role: obs
       volumes:
         - name: config
           configMap:

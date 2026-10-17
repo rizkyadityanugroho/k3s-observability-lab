@@ -12,15 +12,19 @@ spec:
       labels:
         app: node-api
     spec:
+      imagePullSecrets:
+        - name: ecr-cred
       containers:
         - name: node-api
-          image: node-api:dev
-          imagePullPolicy: Never
+          image: <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/node-api:<TAG> #Fill this values accordingly
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
           envFrom:
             - configMapRef:
                 name: node-config
+      nodeSelector:
+        role: worker
 ---
 apiVersion: v1
 kind: Service

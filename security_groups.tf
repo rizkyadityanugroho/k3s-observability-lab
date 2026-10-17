@@ -16,6 +16,7 @@ module "sg-obs-node" {
     k8s_api       = { cidr_blocks = [local.my_ip] }
     flannel_vxlan = { source_security_group_id = module.sg-worker-node.id }
     self_flannel  = {}
+    http          = { cidr_blocks = [local.my_ip] }
   }
 
   custom_ingress = [
@@ -28,8 +29,8 @@ module "sg-obs-node" {
       source_security_group_id = module.sg-db-node.id
     },
     {
-      from_port   = 3000
-      to_port     = 3000
+      from_port   = 30000
+      to_port     = 30000
       description = "Grafana Web"
       name        = "grafana-web"
       protocol    = "tcp"

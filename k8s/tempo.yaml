@@ -42,10 +42,8 @@ spec:
               readOnly: true
             - name: data
               mountPath: /var/tempo
-      tolerations:
-        - key: "obs"
-          operator: "Exists"
-          effect: "NoSchedule"
+      nodeSelector:
+        role: obs
       volumes:
         - name: config
           configMap:

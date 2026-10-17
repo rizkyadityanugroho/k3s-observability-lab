@@ -40,10 +40,8 @@ spec:
               readOnly: true
             - name: data
               mountPath: /loki
-      tolerations:
-        - key: "obs"
-          operator: "Exists"
-          effect: "NoSchedule"
+      nodeSelector:
+        role: obs
       volumes:
         - name: config
           configMap:

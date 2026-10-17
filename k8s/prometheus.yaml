@@ -37,10 +37,8 @@ spec:
               mountPath: /etc/prometheus/prometheus.yaml
               subPath: config.yaml
               readOnly: true
-      tolerations:
-        - key: "obs"
-          operator: "Exists"
-          effect: "NoSchedule"
+      nodeSelector:
+        role: obs
       volumes:
         - name: config
           configMap:

@@ -35,10 +35,8 @@ spec:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
               readOnly: true
-      tolerations:
-        - key: "obs"
-          operator: "Exists"
-          effect: "NoSchedule"
+      nodeSelector:
+        role: obs
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -54,7 +52,9 @@ metadata:
 spec:
   selector:
     app: grafana
+  type: NodePort
   ports:
     - name: http
       port: 3000
       targetPort: 3000
+      nodePort: 30000
