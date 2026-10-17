@@ -102,38 +102,43 @@ Create `terraform.tfvars` locally (it is intentionally ignored):
 
 ```hcl
 vpc_cidr      = "192.168.10.0/24"
-vpc_name      = "k3s-observability-lab"
-vpc_az_count  = 1
-vpc_host_bits = 2
+vpc_az_count  = 2
+vpc_host_bits = 1
+vpc_name      = "sre-vpc"
 key_pair_path = "~/.ssh/id_ed25519.pub"
 ```
 
-`terraform.tfvars.example` is only a reference. Do not put a real token, private key, AWS credentials, or account ID in Git.
+These are the current values in [`terraform.tfvars.example`](terraform.tfvars.example). Do not put a private key, AWS credentials, or account ID in Git.
 
-### 2. Provision AWS resources
+### 2. Provision AWS resources and configure kubectl
+
+The local deployment helper uses AWS profile `nalita`; change or omit that export if your credentials use another profile.
 
 ```bash
+export AWS_PROFILE=nalita
 terraform init
 terraform fmt -recursive
 terraform validate
-terraform plan
-terraform apply
-```
+terraform apply -auto-approve
 
-Terraform creates the VPC/subnet, ECR repository, security groups, and EC2 instances. The server bootstrap starts k3s with `role=obs`; the agents join it with `role=worker` or `role=db`.
+# bastion_ip is a one-element output list, hence the jq index.
+BASTION_IP="$(terraform output -json bastion_ip | jq -r '.[0]')"
 
-Get the control-plane public IP:
+# Bootstrap takes longer than Terraform resource creation. Wait for the k3s API,
+# rather than relying on a fixed sleep alone.
+until ssh "ubuntu@$BASTION_IP" 'sudo test -s /etc/rancher/k3s/k3s.yaml'; do
+  sleep 5
+done
 
-```bash
-terraform output -raw bastion_ip
-```
+ssh "ubuntu@$BASTION_IP" 'sudo cat /etc/rancher/k3s/k3s.yaml' > k3s.yaml
+URL="https://$BASTION_IP:6443" yq -i '.clusters[].cluster.server = strenv(URL)' k3s.yaml
+export KUBECONFIG="$PWD/k3s.yaml"
 
-Copy the kubeconfig from the server, replace its loopback API endpoint with the public IP or public DNS, then validate the cluster:
-
-```bash
 kubectl get nodes -o wide
 kubectl get pods -A -o wide
 ```
+
+Terraform creates the VPC/subnet, ECR repository, security groups, and EC2 instances. The server bootstrap starts k3s with `role=obs`; the agents join it with `role=worker` or `role=db`. `k3s.yaml` is ignored by Git because it contains cluster credentials.
 
 Expected node roles:
 
@@ -147,31 +152,42 @@ role=db       # reserved database node
 
 ### 1. Build and push a multi-architecture image
 
-The cluster is ARM64, so publish an image that includes `linux/arm64`:
+The cluster is ARM64. The local deployment helper builds a multi-architecture image so the same tag works for ARM64 k3s nodes and an AMD64 development machine:
 
 ```bash
 export AWS_REGION=ap-southeast-3
 export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 export ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+export IMAGE_TAG=0.0.1
 
+# Authenticate Docker for the push.
 aws ecr get-login-password --region "$AWS_REGION" \
   | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
 docker buildx build \
-  --platform linux/arm64 \
-  --tag "$ECR_REGISTRY/node-api:0.0.1" \
+  --platform linux/amd64,linux/arm64 \
+  --tag "$ECR_REGISTRY/node-api:$IMAGE_TAG" \
   --push \
   ./app
 ```
 
-Create or refresh the ECR pull secret in the cluster. ECR authorization tokens expire, so regenerate it when image pulls fail with an expired-token error:
+Create or refresh the ECR pull secret. The temporary Docker config holds only the short-lived ECR token and avoids overwriting your normal Docker login config. ECR authorization tokens expire, so rerun this when pods fail with an expired-token error:
 
 ```bash
-kubectl create secret docker-registry ecr-cred \
-  --docker-server="$ECR_REGISTRY" \
-  --docker-username=AWS \
-  --docker-password="$(aws ecr get-login-password --region "$AWS_REGION")" \
+TMP_DOCKER_CONFIG="$(mktemp -d)"
+trap 'rm -rf "$TMP_DOCKER_CONFIG"' EXIT
+
+aws ecr get-login-password --region "$AWS_REGION" \
+  | docker --config "$TMP_DOCKER_CONFIG" login \
+      --username AWS --password-stdin "$ECR_REGISTRY"
+
+kubectl create secret generic ecr-cred \
+  --from-file=.dockerconfigjson="$TMP_DOCKER_CONFIG/config.json" \
+  --type=kubernetes.io/dockerconfigjson \
   --dry-run=client -o yaml | kubectl apply -f -
+
+rm -rf "$TMP_DOCKER_CONFIG"
+trap - EXIT
 ```
 
 ### 2. Set the image reference
@@ -182,11 +198,10 @@ Edit `k8s/node-api.yaml` and replace:
 image: <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/node-api:<TAG>
 ```
 
-with the image you pushed. Apply the API configuration and workload:
+with the image you pushed (for example, `$ECR_REGISTRY/node-api:$IMAGE_TAG`). Then apply the complete manifest directory. The repository file names deliberately put the ConfigMaps before the workloads that mount them:
 
 ```bash
-kubectl apply -f k8s/api-configmap.yaml
-kubectl apply -f k8s/node-api.yaml
+kubectl apply -f ./k8s
 kubectl get deploy,po,svc,ingress -o wide
 ```
 
@@ -202,23 +217,9 @@ curl -i -H 'Host: node-api.local' http://<NODE_PUBLIC_IP>/error
 
 ## Deploy the observability stack
 
-Apply ConfigMaps before workloads that mount them:
+`kubectl apply -f ./k8s` in the preceding API deployment step also deploys Alloy, Prometheus, Loki, Tempo, Grafana, their ConfigMaps/PVCs, Grafana data sources, and the v2 dashboard. Check that the components landed on the obs node:
 
 ```bash
-kubectl apply -f k8s/alloy-configmap.yaml
-kubectl apply -f k8s/prom-configmap.yaml
-kubectl apply -f k8s/loki-configmap.yaml
-kubectl apply -f k8s/tempo-configmap.yaml
-kubectl apply -f k8s/grafana-datasources.yaml
-kubectl apply -f k8s/grafana-provider.yaml
-kubectl apply -f k8s/grafana-v2-dashboard.yaml
-
-kubectl apply -f k8s/alloy.yaml
-kubectl apply -f k8s/prometheus.yaml
-kubectl apply -f k8s/loki.yaml
-kubectl apply -f k8s/tempo.yaml
-kubectl apply -f k8s/grafana.yaml
-
 kubectl get pods -o wide
 ```
 
