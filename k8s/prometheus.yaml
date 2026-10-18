@@ -29,6 +29,8 @@ spec:
           args:
             - --config.file=/etc/prometheus/prometheus.yaml
             - --web.enable-remote-write-receiver
+            - --storage.tsdb.retention.time=6h
+            - --storage.tsdb.path=/prometheus
           ports:
             - name: prom
               containerPort: 9090
@@ -37,12 +39,17 @@ spec:
               mountPath: /etc/prometheus/prometheus.yaml
               subPath: config.yaml
               readOnly: true
+            - name: data
+              mountPath: /prometheus
       nodeSelector:
         role: obs
       volumes:
         - name: config
           configMap:
             name: prom-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: prom-data
 ---
 apiVersion: v1
 kind: Service
