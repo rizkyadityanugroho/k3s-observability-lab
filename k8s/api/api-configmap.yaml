@@ -9,3 +9,8 @@ data:
   OTEL_SERVICE_NAME: node-api
   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://alloy:4317
   OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://alloy:4317
+  PGUSER: appuser
+  PGDATABASE: appdb
+  PGPASSWORD: password
+  PGHOST: pgbouncer
+  PGPORT: "6432"

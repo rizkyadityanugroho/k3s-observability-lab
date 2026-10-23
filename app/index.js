@@ -2,6 +2,12 @@ const { metrics } = require('@opentelemetry/api');
 const pino = require('pino-http')();
 const express = require('express');
 const app = express();
+let client;
+
+(async () => {
+  const { Client }= require('pg');
+  client = await new Client().connect()
+})();
 
 const meter = metrics.getMeter('node-app');
 
@@ -54,6 +60,22 @@ app.get('/slow', (req, res) => {
 app.get('/error', (req, res) => {
   req.log.error('Intentional error');
   res.status(500).send('Intentional error');
+});
+
+app.get('/slow-db', async (req, res) => {
+  await client.query('SELECT pg_sleep(3)')
+  req.log.info('Slow DB Response');
+  res.send('Slow DB Response');
+});
+
+app.get('/error-db', async (req, res) => {
+  try {
+    await client.query('SELECT * FROM nonexistent_table') //This will throw error
+  } catch (err) {
+    req.log.error({ err }, 'Intentional DB error');
+    return res.status(500).send('Intentional DB error');
+  }
+  res.send('OK')
 });
 
 app.listen(process.env.PORT, () => pino.logger.info(`Listening on ${process.env.PORT}`));
