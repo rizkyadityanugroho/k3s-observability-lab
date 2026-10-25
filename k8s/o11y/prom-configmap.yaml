@@ -8,6 +8,10 @@ data:
       - job_name: 'alloy'
         static_configs:
           - targets: ['alloy:8888']
+
+      - job_name: 'pgbouncer'
+        static_configs:
+          - targets: ['pgbouncer-exporter:9127']
 kind: ConfigMap
 metadata:
   name: prom-config
