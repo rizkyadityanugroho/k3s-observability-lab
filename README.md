@@ -1,10 +1,11 @@
 # SRE Capstone: k3s Observability Lab on AWS
 
-A load-tested, three-node microservice lab on k3s with a full LGTM-style
-(metrics / logs / traces) stack — provisioned with Terraform, instrumented with
-OpenTelemetry, and monitored through Prometheus + Grafana + Loki + Tempo.
+A k3s microservice lab with four node roles (control, obs, two workers, db) and
+a full LGTM-style (metrics / logs / traces) stack — provisioned with Terraform,
+instrumented with OpenTelemetry, and monitored through Prometheus + Grafana +
+Loki + Tempo.
 
-Everything this README describes was applied to a live cluster using
+The infrastructure and workload manifests are designed to be deployed through
 `deploy.sh`.
 
 ## What this demonstrates
@@ -19,8 +20,8 @@ Everything this README describes was applied to a live cluster using
   endpoint) plus an explicit PgBouncer scrape job.
 - PgBouncer as a connection pooler between the API and PostgreSQL, with the
   official Prometheus community exporter.
-- Pre-provisioned Grafana datasources (Prometheus, Loki, Tempo) broke out of
-  the Grafana image via `grafana-datasources.yaml`.
+- Pre-provisioned Grafana datasources and a dashboard-as-code resource
+  (`grafana-datasources.yaml`, `grafana-v2-dashboard.yaml`, `grafana-provider.yaml`).
 
 ## Architecture
 
@@ -32,31 +33,50 @@ flowchart LR
         igw[Internet gateway]
         subgraph vpc["VPC"]
             subgraph subnet["Public subnet · one AZ"]
-                obs["Observability node (obs-node)<br/>t4g.medium · k3s SERVER<br/>Prometheus · Loki · Tempo · Grafana · Alloy"]
-                api0["API worker 0<br/>t4g.micro · k3s agent<br/>NodeJS service"]
-                api1["API worker 1<br/>t4g.micro · k3s agent<br/>NodeJS service"]
-                db["Data node (db-node)<br/>t4g.small · k3s agent<br/>PostgreSQL + PgBouncer + PgBouncer exporter"]
+                control["control-node<br/>t4g.small · k3s SERVER<br/>bastion"]
+                obs["obs-node<br/>t4g.small · k3s agent<br/>Prometheus · Loki · Tempo · Grafana · Alloy"]
+                worker0["worker-node<br/>t4g.micro · k3s agent<br/>NodeJS service"]
+                worker1["worker-node<br/>t4g.micro · k3s agent<br/>NodeJS service"]
+                db["db-node<br/>t4g.small · k3s agent<br/>PostgreSQL + PgBouncer + PgBouncer exporter"]
             end
         end
     end
 
-    client -->|HTTP 80/443| igw
-    igw --> api0
-    igw --> api1
-    igw --> obs
+    client -->|"SSH 22<br/>API 6443"| control
+    client -->|"HTTP 80"| worker0
+    client -->|"HTTP 80"| worker1
+    client -->|"Grafana 30000"| obs
 
-    obs <-->|"6443 · kubelet/API"| api0
-    obs <-->|"6443 · kubelet/API"| api1
-    obs <-->|"6443 · kubelet/API"| db
+    control <-->|"8472 · Flannel VXLAN"| obs
+    control <-->|"8472 · Flannel VXLAN"| worker0
+    control <-->|"8472 · Flannel VXLAN"| worker1
+    control <-->|"8472 · Flannel VXLAN"| db
 
-    obs -.->|"scrape 9090"| prom[Prometheus]
-    subgraph obs_node[obs-node]
-        prom -.->|"scrape pgbouncer\n:9127 metrics"| exp[pgbouncer-exporter]
-        exp -.->|"SHOW … queries"| pgb2[PgBouncer]
-        prom -.->|"remote_write\nvia Alloy"| api0
-        prom -.->|"remote_write\nvia Alloy"| api1
-    end
+    obs -.->|"scrape pgbouncer:9127"| db
+    worker0 -.->|"OTLP telemetry"| obs
+    worker1 -.->|"OTLP telemetry"| obs
+    worker0 -->|"6432 · pgBouncer"| db
+    worker1 -->|"6432 · pgBouncer"| db
+
+    style control fill:#e5dbff,stroke:#6741d9
+    style obs fill:#d0ebff,stroke:#1971c2
+    style worker0 fill:#d3f9d8,stroke:#2b8a3e
+    style worker1 fill:#d3f9d8,stroke:#2b8a3e
+    style db fill:#ffe8cc,stroke:#e67700
 ```
+
+**Node roles** (from `ec2.tf` / `security_groups.tf`; `architecture.md` is stale —
+disregard):
+
+| Node | Instance | k3s role | label | Workloads |
+|---|---:|---|---|---|
+| `control-node` | `t4g.small` | server | `role=control` | k3s control plane, bastion |
+| `obs-node` | `t4g.small` | agent | `role=obs` | Alloy, Prometheus, Loki, Tempo, Grafana |
+| `workers-node` ×2 | `t4g.micro` | agent | `role=worker` | `node-api` |
+| `db-node` | `t4g.small` | agent | `role=db` | Postgres, PgBouncer, PgBouncer exporter |
+
+Ingress rules are declared per-SG in `security_groups.tf`; all nodes open
+UDP 8472 to each other for VXLAN.
 
 ## Requirements
 
@@ -101,9 +121,10 @@ To bring up the cluster, build/push the app image, and apply the manifests:
 ./deploy.sh
 ```
 
-The script uses the top-level `node-api.yaml` image
-(`<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/node-api:<TAG>`), so update that
-manifest with your account, region, and tag before running it.
+The script builds the app image, but it does not template manifests. Update the
+image in `k8s/api/node-api.yaml`
+(`<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/node-api:<TAG>`) with your
+account, region, and tag before running it.
 
 Get the control-node address:
 
@@ -112,8 +133,7 @@ terraform output -raw bastion_ip
 terraform output -raw bastion_dns
 ```
 
-SSH through the control node when worker security groups permit SSH only from
-the control-node security group:
+SSH directly to the control node:
 
 ```bash
 export CONTROL_IP=$(terraform output -raw bastion_ip)
@@ -157,8 +177,8 @@ and `pgbouncer_stats_queries_pooled_total`.
 
 ### Validate the full path
 
-The API is exposed via Ingress `node-api.local` on the control node's public
-IP. Send a request with the matching `Host` header:
+The API is exposed via Traefik on the worker nodes. Send a request to either
+worker's public IP with the matching `Host` header:
 
 ```bash
 curl -i -H 'Host: node-api.local' http://"$EC2_IP"
@@ -216,19 +236,20 @@ sum by (database)(
 
 ## Security-group design
 
-The security-group module contains named ingress presets, such as `ssh`,
-`k8s_api`, `kubelet`, and `flannel_vxlan`. The caller supplies the source CIDR
-or source security-group ID.
+`security_groups.tf` assigns security groups by node role. The public entry
+points are deliberately narrow:
 
-The control and worker security groups cannot both embed their reverse
-references inside module arguments. That creates a Terraform graph cycle. This
-repo keeps worker rules that refer to the control SG in the worker module call,
-then creates the control-side rules from the worker SG as root-level
-`aws_security_group_rule` resources.
+| Node group | Ingress beyond VXLAN | Purpose |
+|---|---|---|
+| control | admin IP → 22, 6443 | SSH and Kubernetes API |
+| obs | control SG → 22, 10250; admin IP → 30000 | node management and Grafana |
+| workers | control SG → 22, 10250; admin IP → 80 | node management and Traefik |
+| db | control SG → 22, 10250 | node management only |
 
-Flannel VXLAN uses UDP/8472 beneath Kubernetes traffic. Security groups must
-permit that overlay traffic in both directions between nodes. TCP connection
-tracking for the application request does not cover a separate UDP VXLAN flow.
+Every node group permits UDP/8472 from each other node group for Flannel VXLAN.
+PgBouncer, PostgreSQL, OTLP, and exporter endpoints are ClusterIP/pod traffic
+over the overlay, not public node listeners; they do not have dedicated
+internet-facing security-group rules.
 
 ## Bootstrap behavior
 
@@ -241,10 +262,10 @@ terraform apply -replace='aws_instance.ec2_control'
 terraform apply -replace='aws_instance.ec2_workers[0]'
 ```
 
-A shared `k3s_token` allows workers to join the control plane. It is suitable
-for this short-lived lab, but it appears in Terraform state and instance user
-data. Production infrastructure should source it from SSM Parameter Store or
-Secrets Manager.
+A shared `k3s_token` allows agents to join the control plane (see
+`modules/ec2/main.tf`). It is suitable for this short-lived lab, but it appears
+in Terraform state and instance user data. Production infrastructure should
+source it from SSM Parameter Store or Secrets Manager.
 
 ## Teardown
 
