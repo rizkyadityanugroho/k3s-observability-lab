@@ -65,8 +65,7 @@ flowchart LR
     style db fill:#ffe8cc,stroke:#e67700
 ```
 
-**Node roles** (from `ec2.tf` / `security_groups.tf`; `architecture.md` is stale —
-disregard):
+**Node roles** (from `ec2.tf` / `security_groups.tf`):
 
 | Node | Instance | k3s role | label | Workloads |
 |---|---:|---|---|---|
